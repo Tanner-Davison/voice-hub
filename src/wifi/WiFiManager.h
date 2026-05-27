@@ -7,6 +7,8 @@
 #include <ArduinoJson.h>
 #include "../types.h"
 
+using namespace arduino;  // WiFiClient/Client live in arduino:: on mbed core
+
 namespace VoiceHub {
 
 class WiFiManager {
@@ -33,7 +35,7 @@ public:
         }
 
         Serial.print("\n[WiFi] Connected! IP: ");
-        Serial.println(WiFi.localIP());
+        Serial.println(WiFi.localIP().toString());
         return true;
     }
 
@@ -52,7 +54,7 @@ public:
         reconnectIfNeeded();
 
         WiFiClient wifi;
-        HttpClient client(wifi, target.host, target.port);
+        HttpClient client(static_cast<Client&>(wifi), target.host, static_cast<uint16_t>(target.port));
 
         Serial.print("[WiFi] Triggering: ");
         Serial.println(target.command);

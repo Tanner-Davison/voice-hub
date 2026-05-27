@@ -14,27 +14,25 @@ No cloud required. All inference runs on-device.
 
 ### INMP441 Wiring
 
-| INMP441 Pin | Giga R1 Pin | Notes                   |
-| ----------- | ----------- | ----------------------- |
-| VDD         | 3.3V        |                         |
-| GND         | GND         |                         |
-| SD          | Pin 35      | I2S Data                |
-| WS          | Pin 25      | I2S Word Select (LRCLK) |
-| SCK         | Pin 5       | I2S Bit Clock           |
-| L/R         | GND         | Selects left channel    |
-
-> ⚠️ Verify these pin numbers against the official Giga R1 pinout diagram.
-> The I2S peripheral assignments may differ depending on your Arduino core version.
+| INMP441 Pin | Giga R1 Pin   | Notes                   |
+| ----------- | ------------- | ----------------------- |
+| VDD         | 3.3V          |                         |
+| GND         | GND           |                         |
+| SD          | PG_9          | I2S Data In             |
+| WS          | PG_10         | I2S Word Select (LRCLK) |
+| SCK         | PG_11         | I2S Bit Clock           |
+| L/R         | GND           | Selects left channel    |
+| MCK         | not connected | INMP441 doesn't need it |
 
 ---
 
 ## Software Setup
 
-### 1. Arduino Libraries (Library Manager)
+### 1. Arduino Libraries (install via arduino-cli)
 
-- `ArduinoHttpClient`
-- `ArduinoJson`
-- `Arduino_AdvancedAnalog`
+```bash
+arduino-cli lib install "ArduinoHttpClient" "ArduinoJson" "Arduino_AdvancedAnalog"
+```
 
 ### 2. Train Your Model on Edge Impulse
 
@@ -44,7 +42,7 @@ No cloud required. All inference runs on-device.
 4. Record ~50 samples of background noise
 5. Train the model (Impulse Design → MFCC → Neural Network)
 6. Export: **Deployment → Arduino Library → Build**
-7. In Arduino IDE: Sketch → Include Library → Add .ZIP Library
+7. Install the exported `.zip`: `arduino-cli lib install --zip <file>.zip`
 
 ### 3. Update ClassifierBridge.h
 
@@ -61,11 +59,91 @@ Fill in:
 - WiFi SSID and password
 - Webhook hosts, ports, and paths for each keyword
 
-### 5. Upload
+---
 
-- Select board: **Arduino Giga R1 WiFi (M7)**
-- Upload `voice_hub.ino`
-- Open Serial Monitor at 115200 baud
+## Compiling & Uploading (WSL2)
+
+> The Giga R1 uses DFU mode for uploads. WSL2 needs usbipd to access USB devices.
+> One-time setup steps are marked with 🔧.
+
+### 🔧 One-time: udev rule (gives WSL permission to talk to DFU device)
+
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2341", ATTR{idProduct}=="0366", MODE="0666"' | sudo tee /etc/udev/rules.d/99-arduino-giga.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+### 🔧 One-time: bind the device in usbipd (PowerShell as Administrator)
+
+```powershell
+usbipd bind --busid 1-1
+```
+
+> `1-1` is the Giga R1's bus ID on this machine. Run `usbipd list` to confirm
+> it shows VID `2341`. Only needs to be done once per device.
+
+### Keeping the Arduino visible to WSL (auto-attach)
+
+Run this in a PowerShell window while doing Arduino work:
+
+```powershell
+usbipd attach --wsl --busid 1-1 --auto-attach
+```
+
+> This runs in the foreground and automatically reattaches the device whenever
+> it reconnects — including after DFU resets. It only does anything when the
+> Arduino is plugged in; the rest of the time it just sleeps. Memory footprint
+> is basically nothing. Keep it running in a minimized terminal and close it
+> when you're done for the day.
+
+### Every upload: 3-step process
+
+**Step 1 — Double-press the reset button** on the Giga R1.
+The LED will start pulsing slowly — this means it's in DFU (bootloader) mode.
+
+**Step 2 — Attach in PowerShell** (skip if auto-attach is already running):
+
+```powershell
+usbipd attach --wsl --busid 1-1
+```
+
+**Step 3 — Compile + upload in WSL immediately after:**
+
+```bash
+arduino-cli compile --fqbn arduino:mbed_giga:giga \
+  --upload --port /dev/ttyACM0 \
+  /home/tanner/projects/cpp/arduino/voice-hub
+```
+
+> Do steps 2 and 3 quickly — the DFU window is only a few seconds.
+
+### Compile only (no upload)
+
+```bash
+arduino-cli compile --fqbn arduino:mbed_giga:giga \
+  /home/tanner/projects/cpp/arduino/voice-hub
+```
+
+### Monitor serial output
+
+```bash
+arduino-cli monitor --port /dev/ttyACM0 --config baudrate=115200
+```
+
+---
+
+## Regenerate compile_commands.json (after adding libraries)
+
+Run this whenever you add a new library so clangd stays accurate in Neovim:
+
+```bash
+arduino-cli compile \
+  --fqbn arduino:mbed_giga:giga \
+  --only-compilation-database \
+  /home/tanner/projects/cpp/arduino/voice-hub \
+  && cp /home/tanner/.cache/arduino/sketches/FCE07FC75D3BAFAA0DEC4DA1B2D55F2B/compile_commands.json \
+     /home/tanner/projects/cpp/arduino/voice-hub/
+```
 
 ---
 
@@ -73,11 +151,14 @@ Fill in:
 
 ```
 voice-hub/
-├── voice_hub.ino              # Main sketch
+├── voice-hub.ino              # Main sketch (filename must match directory)
+├── compile_commands.json      # Generated by arduino-cli — clangd uses this
+├── .clangd                    # Suppresses noise from library headers in Neovim
 ├── src/
 │   ├── config.h               # WiFi credentials & webhook targets
+│   ├── types.h                # Shared types (WebhookTarget)
 │   ├── audio/
-│   │   └── I2SMicrophone.h    # INMP441 I2S capture
+│   │   └── I2SMicrophone.h    # INMP441 I2S capture via AdvancedI2S
 │   ├── wifi/
 │   │   └── WiFiManager.h      # WiFi connection & HTTP webhooks
 │   └── classifier/
@@ -90,8 +171,8 @@ voice-hub/
 
 ## Adding Commands
 
-1. Train the keyword in Edge Impulse and retrain/re-export the model
-2. Add a new entry to `Config::WEBHOOKS[]` in `config.h`:
+1. Train the new keyword in Edge Impulse and re-export the model
+2. Add an entry to `Config::WEBHOOKS[]` in `config.h`:
 
 ```cpp
 {
@@ -104,6 +185,8 @@ voice-hub/
 },
 ```
 
+3. Regenerate `compile_commands.json` (see above)
+
 ---
 
 ## Webhook Targets
@@ -114,15 +197,3 @@ voice-hub/
 | IFTTT          | `maker.ifttt.com`          | `/trigger/<event>/with/key/<key>` |
 | ntfy.sh        | `ntfy.sh`                  | `/<topic>` via POST               |
 | Custom server  | anything                   | Any REST endpoint                 |
-
-## After Adding Any New Libraries Run:
-
-```bash
-arduino-cli compile \
-  --fqbn arduino:mbed_giga:giga \
-  --only-compilation-database \
-  /home/tanner/projects/cpp/arduino/voice-hub \
-  && cp /home/tanner/.cache/arduino/sketches/FCE07FC75D3BAFAA0DEC4DA1B2D55F2B/compile_commands.json \
-     /home/tanner/projects/cpp/arduino/voice-hub/
-
-```

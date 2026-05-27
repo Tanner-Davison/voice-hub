@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.h"
+#include <stddef.h> // size_t
 
 // ─────────────────────────────────────────────────────────────────────────────
 // config.h  —  All user-configurable settings in one place
@@ -9,8 +10,8 @@
 namespace VoiceHub::Config {
 
 // ── WiFi ─────────────────────────────────────────────────────────────────────
-constexpr const char* WIFI_SSID     = "YOUR_SSID";
-constexpr const char* WIFI_PASSWORD = "YOUR_PASSWORD";
+constexpr const char* WIFI_SSID     = "DavisonFamily";
+constexpr const char* WIFI_PASSWORD = "Luliann465$";
 
 // ── Debounce ──────────────────────────────────────────────────────────────────
 // Minimum ms between two triggers of the same command (prevents rapid re-fire)
@@ -25,30 +26,24 @@ constexpr unsigned long DEBOUNCE_MS = 2000;
 // ntfy.sh:        host = "ntfy.sh",             path = "/<topic>", body = nullptr
 
 constexpr WebhookTarget WEBHOOKS[] = {
-    {
-        /* command */ "lights on",
-        /* host    */ "homeassistant.local",
-        /* port    */ 8123,
-        /* path    */ "/api/webhook/lights_on",
-        /* method  */ "POST",
-        /* body    */ nullptr
-    },
-    {
-        /* command */ "lights off",
-        /* host    */ "homeassistant.local",
-        /* port    */ 8123,
-        /* path    */ "/api/webhook/lights_off",
-        /* method  */ "POST",
-        /* body    */ nullptr
-    },
-    {
-        /* command */ "good night",
-        /* host    */ "homeassistant.local",
-        /* port    */ 8123,
-        /* path    */ "/api/webhook/good_night",
-        /* method  */ "POST",
-        /* body    */ nullptr
-    },
+    {/* command */ "lights on",
+     /* host    */ "homeassistant.local",
+     /* port    */ 8123,
+     /* path    */ "/api/webhook/lights_on",
+     /* method  */ "POST",
+     /* body    */ nullptr},
+    {/* command */ "lights off",
+     /* host    */ "homeassistant.local",
+     /* port    */ 8123,
+     /* path    */ "/api/webhook/lights_off",
+     /* method  */ "POST",
+     /* body    */ nullptr},
+    {/* command */ "good night",
+     /* host    */ "homeassistant.local",
+     /* port    */ 8123,
+     /* path    */ "/api/webhook/good_night",
+     /* method  */ "POST",
+     /* body    */ nullptr},
 };
 
 constexpr size_t WEBHOOK_COUNT = sizeof(WEBHOOKS) / sizeof(WEBHOOKS[0]);
