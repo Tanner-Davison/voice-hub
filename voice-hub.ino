@@ -11,11 +11,12 @@
 //   - <your-project>_inferencing  (exported from Edge Impulse)
 //
 // Setup order:
-//   1. Wire INMP441 microphone (see I2SMicrophone.h for pinout)
-//   2. Fill in WiFi credentials and dashboard URL in config.h
-//   3. Train keyword model on Edge Impulse, export as Arduino library
-//   4. Replace the placeholder include in ClassifierBridge.h
-//   5. Upload to Giga R1 M7 core
+//   1. Attach Molex 2.4/5GHz flexible antenna to the u.FL connector on the board
+//   2. Wire INMP441 microphone (see I2SMicrophone.h for pinout)
+//   3. Fill in WiFi credentials and dashboard URL in config.h
+//   4. Train keyword model on Edge Impulse, export as Arduino library
+//   5. Replace the placeholder include in ClassifierBridge.h
+//   6. Upload to Giga R1 M7 core
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "src/config.h"
@@ -53,13 +54,16 @@ void setup() {
 
     Serial.println("=== Voice Hub — Arduino Giga R1 WiFi ===");
 
+    // Use the external Molex antenna instead of the onboard PCB trace
+    WiFi.setAntennaExternal();
+    Serial.println("[WiFi] External antenna enabled");
+
     if (!mic.begin()) {
         Serial.println("[FATAL] Microphone init failed. Halting.");
         while (true);
     }
 
     if (wifi.connect()) {
-        // Connected — announce ourselves to the dashboard
         Serial.println("[Dashboard] Sending connect status...");
         dashboard.sendEvent("status", "connected");
         dashboard.sendStatus();
