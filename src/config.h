@@ -14,11 +14,10 @@ constexpr const char* WIFI_SSID     = "DavisonFamily";
 constexpr const char* WIFI_PASSWORD = "Luliann465$";
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-// Set to your Vercel URL (no https://, no trailing slash) once deployed.
-// For local dev use your Windows host IP (not localhost — board can't reach WSL localhost)
-// Find it with: ipconfig | grep "IPv4" in PowerShell
-constexpr const char* DASHBOARD_HOST = "your-app.vercel.app"; // e.g. "voice-hub-dashboard.vercel.app"
-constexpr int         DASHBOARD_PORT = 80;
+// Local dev: Windows host IP (board can't reach WSL localhost directly)
+// Production: swap for your Vercel URL e.g. "voice-hub-dashboard.vercel.app"
+constexpr const char* DASHBOARD_HOST = "10.0.0.161";
+constexpr int         DASHBOARD_PORT = 3000;
 
 // How often to send a heartbeat to the dashboard (ms)
 constexpr unsigned long HEARTBEAT_MS = 10000;

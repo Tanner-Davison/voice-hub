@@ -8,21 +8,26 @@
 //   - ArduinoHttpClient
 //   - ArduinoJson
 //   - Arduino_AdvancedAnalog  (for I2S on Giga R1)
+//   - Arduino_GigaDisplay_GFX
+//   - Arduino_GigaDisplayTouch
 //   - <your-project>_inferencing  (exported from Edge Impulse)
 //
 // Setup order:
-//   1. Attach Molex 2.4/5GHz flexible antenna to the u.FL connector on the board
-//   2. Wire INMP441 microphone (see I2SMicrophone.h for pinout)
-//   3. Fill in WiFi credentials and dashboard URL in config.h
-//   4. Train keyword model on Edge Impulse, export as Arduino library
-//   5. Replace the placeholder include in ClassifierBridge.h
-//   6. Upload to Giga R1 M7 core
+//   1. Attach u.FL antenna to the board (replacement arriving tomorrow)
+//   2. Plug GIGA Display Shield onto the board
+//   3. Wire INMP441 microphone (see I2SMicrophone.h for pinout) — OR use shield mic
+//   4. Fill in WiFi credentials and dashboard URL in config.h
+//   5. Train keyword model on Edge Impulse, export as Arduino library
+//   6. Replace the placeholder include in ClassifierBridge.h
+//   7. Re-enable WiFi.setAntennaExternal() once antenna is attached
+//   8. Upload to Giga R1 M7 core
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "src/config.h"
 #include "src/audio/I2SMicrophone.h"
 #include "src/wifi/WiFiManager.h"
 #include "src/wifi/Dashboard.h"
+#include "src/display/DisplayManager.h"
 #include "src/classifier/ClassifierBridge.h"
 
 using namespace VoiceHub;
@@ -31,6 +36,7 @@ using namespace VoiceHub;
 I2SMicrophone    mic;
 WiFiManager      wifi(Config::WIFI_SSID, Config::WIFI_PASSWORD);
 Dashboard        dashboard(Config::DASHBOARD_HOST, Config::DASHBOARD_PORT);
+DisplayManager   display;
 ClassifierBridge classifier;
 
 // Audio capture buffer — sized to what Edge Impulse expects (1s @ 16kHz)
@@ -54,47 +60,62 @@ void setup() {
 
     Serial.println("=== Voice Hub — Arduino Giga R1 WiFi ===");
 
-    // Use the external Molex antenna instead of the onboard PCB trace
-    WiFi.setAntennaExternal();
-    Serial.println("[WiFi] External antenna enabled");
+    // Boot display first so the user sees something immediately
+    display.begin();
+    display.showStatus("Booting...");
+
+    // TODO: uncomment once the replacement u.FL antenna arrives and is attached
+    // WiFi.setAntennaExternal();
+    // Serial.println("[WiFi] External antenna enabled");
+    Serial.println("[WiFi] Using onboard PCB antenna (replacement antenna pending)");
 
     if (!mic.begin()) {
         Serial.println("[FATAL] Microphone init failed. Halting.");
+        display.showStatus("MIC FAILED");
         while (true);
     }
 
+    display.showStatus("Connecting to WiFi...");
+
     if (wifi.connect()) {
+        display.setWiFiStatus(true);
+        display.showStatus("connected");
         Serial.println("[Dashboard] Sending connect status...");
         dashboard.sendEvent("status", "connected");
         dashboard.sendStatus();
         lastHeartbeat = millis();
     } else {
+        display.setWiFiStatus(false);
+        display.showStatus("WiFi failed - retrying on detection");
         Serial.println("[WARN] WiFi not connected. Will retry on detection.");
     }
 
     Serial.println("[READY] Listening for keywords...");
+    display.showStatus("Listening...");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 void loop() {
-    // 1. Heartbeat — keep the dashboard showing us as Online
+    // 1. Keep display responsive
+    display.update();
+
+    // 2. Heartbeat — keep the dashboard showing us as Online
     if (wifi.isConnected() && (millis() - lastHeartbeat >= Config::HEARTBEAT_MS)) {
         dashboard.sendStatus();
         lastHeartbeat = millis();
     }
 
-    // 2. Capture 1 second of audio into buffer
+    // 3. Capture 1 second of audio into buffer
     mic.capture(audioBuffer, CAPTURE_SAMPLES);
 
-    // 3. Run ML inference
+    // 4. Run ML inference
     ClassifierResult result = classifier.classify(audioBuffer, CAPTURE_SAMPLES);
 
-    // 4. Handle valid detections
+    // 5. Handle valid detections
     if (result.valid) {
         handleDetection(result);
     }
 
-    // Small yield to keep WiFi stack healthy
     delay(10);
 }
 
@@ -102,7 +123,6 @@ void loop() {
 void handleDetection(const ClassifierResult& result) {
     unsigned long now = millis();
 
-    // Debounce — ignore same command within DEBOUNCE_MS
     bool sameLabel = (lastTriggerLabel != nullptr &&
                       strcmp(result.label, lastTriggerLabel) == 0);
 
@@ -119,6 +139,9 @@ void handleDetection(const ClassifierResult& result) {
     Serial.print(" (");
     Serial.print(result.confidence * 100.0f, 1);
     Serial.println("%)");
+
+    // Update display
+    display.showDetection(result.label, result.confidence);
 
     // Post to dashboard
     dashboard.sendEvent("keyword", result.label, result.confidence);
