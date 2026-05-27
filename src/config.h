@@ -13,6 +13,16 @@ namespace VoiceHub::Config {
 constexpr const char* WIFI_SSID     = "DavisonFamily";
 constexpr const char* WIFI_PASSWORD = "Luliann465$";
 
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+// Set to your Vercel URL (no https://, no trailing slash) once deployed.
+// For local dev use your Windows host IP (not localhost — board can't reach WSL localhost)
+// Find it with: ipconfig | grep "IPv4" in PowerShell
+constexpr const char* DASHBOARD_HOST = "your-app.vercel.app"; // e.g. "voice-hub-dashboard.vercel.app"
+constexpr int         DASHBOARD_PORT = 80;
+
+// How often to send a heartbeat to the dashboard (ms)
+constexpr unsigned long HEARTBEAT_MS = 10000;
+
 // ── Debounce ──────────────────────────────────────────────────────────────────
 // Minimum ms between two triggers of the same command (prevents rapid re-fire)
 constexpr unsigned long DEBOUNCE_MS = 2000;
