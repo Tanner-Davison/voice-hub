@@ -7,13 +7,13 @@ No cloud required. All inference runs locally.
 
 ## Hardware
 
-| Component        | Details                        | Status         |
-| ---------------- | ------------------------------ | -------------- |
-| Board            | Arduino Giga R1 WiFi           | ✅ In hand      |
-| Display          | Arduino GIGA Display Shield    | 📦 Arriving tomorrow |
-| Microphone       | INMP441 MEMS I2S               | 📦 Arriving Thursday |
-| Antenna          | u.FL 2.4/5GHz flexible         | 📦 Arriving tomorrow |
-| Speaker          | Bluetooth speaker (A2DP)       | 🔜 Future      |
+| Component  | Details                     | Status               |
+| ---------- | --------------------------- | -------------------- |
+| Board      | Arduino Giga R1 WiFi        | ✅ In hand           |
+| Display    | Arduino GIGA Display Shield | 📦 Arriving tomorrow |
+| Microphone | INMP441 MEMS I2S            | 📦 Arriving Thursday |
+| Antenna    | u.FL 2.4/5GHz flexible      | 📦 Arriving tomorrow |
+| Speaker    | Bluetooth speaker (A2DP)    | 🔜 Future            |
 
 ### INMP441 Wiring
 
@@ -44,12 +44,14 @@ All three need to be started before testing. Keep each in its own terminal.
 Handles natural language questions from the board.
 
 **Start (PowerShell):**
+
 ```powershell
 $env:OLLAMA_HOST = "0.0.0.0:11434"
 ollama serve
 ```
 
 **Verify:**
+
 ```bash
 # From WSL
 curl http://10.0.0.161:11434/api/tags
@@ -57,6 +59,7 @@ curl http://10.0.0.161:11434/api/tags
 
 You should see a JSON list of installed models. If it times out, check that the
 Windows Firewall rule for port 11434 exists:
+
 ```powershell
 New-NetFirewallRule -DisplayName "Ollama" -Direction Inbound -Protocol TCP -LocalPort 11434 -Action Allow
 ```
@@ -68,15 +71,20 @@ New-NetFirewallRule -DisplayName "Ollama" -Direction Inbound -Protocol TCP -Loca
 Converts Ollama's text responses into spoken WAV audio.
 
 **Requirements:**
+
 - Python 3.13: `C:\Users\Tanner\AppData\Local\Programs\Python\Python313\python.exe`
 - Model files in `C:\Users\Tanner\`: `kokoro-v1.0.onnx` and `voices-v1.0.bin`
 
 **Start (PowerShell):**
+
 ```powershell
+cd C:\Users\Tanner
+
 & "C:\Users\Tanner\AppData\Local\Programs\Python\Python313\python.exe" "\\wsl$\Ubuntu\home\tanner\projects\react\voice-hub-dashboard\scripts\kokoro_server.py"
 ```
 
 **Verify:**
+
 ```bash
 # From WSL
 curl http://10.0.0.161:8880/health
@@ -84,6 +92,7 @@ curl http://10.0.0.161:8880/health
 ```
 
 If it times out, add the firewall rule:
+
 ```powershell
 New-NetFirewallRule -DisplayName "Kokoro TTS" -Direction Inbound -Protocol TCP -LocalPort 8880 -Action Allow
 ```
@@ -95,6 +104,7 @@ New-NetFirewallRule -DisplayName "Kokoro TTS" -Direction Inbound -Protocol TCP -
 The web dashboard and API bridge between the board, Ollama, and Kokoro.
 
 **Start (WSL):**
+
 ```bash
 cd ~/projects/react/voice-hub-dashboard
 npm run dev
@@ -103,6 +113,7 @@ npm run dev
 **Verify:** Open http://localhost:3000 in your browser.
 
 **Requires `.env.local`** with:
+
 ```env
 UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
@@ -119,6 +130,7 @@ KOKORO_VOICE=af_sky
 Run these from WSL to verify the full stack is working before touching the board.
 
 **Test Ollama:**
+
 ```bash
 curl -s -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
@@ -127,6 +139,7 @@ curl -s -X POST http://localhost:3000/api/query \
 ```
 
 **Test Kokoro:**
+
 ```bash
 curl -s -X POST http://localhost:3000/api/speak \
   -H "Content-Type: application/json" \
@@ -136,6 +149,7 @@ curl -s -X POST http://localhost:3000/api/speak \
 ```
 
 **Test full pipeline (query → speak):**
+
 ```bash
 RESPONSE=$(curl -s -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
@@ -151,6 +165,7 @@ curl -s -X POST http://localhost:3000/api/speak \
 ```
 
 **Test board heartbeat:**
+
 ```bash
 curl -X POST http://localhost:3000/api/status \
   -H "Content-Type: application/json" \
@@ -189,6 +204,7 @@ Uncomment and update the include at the top of `src/classifier/ClassifierBridge.
 ### Update config.h
 
 Fill in:
+
 - WiFi SSID and password
 - `DASHBOARD_HOST` — your Windows IP (`10.0.0.161`) for local dev, Vercel URL for production
 - Webhook hosts, ports, and paths for each keyword
@@ -227,11 +243,13 @@ usbipd attach --wsl --busid 1-1 --auto-attach
 **Step 1 — Double-press reset** on the Giga R1. LED pulses = DFU mode.
 
 **Step 2 — Attach in PowerShell:**
+
 ```powershell
 usbipd attach --wsl --busid 1-1
 ```
 
 **Step 3 — Compile + upload in WSL:**
+
 ```bash
 arduino-cli compile --fqbn arduino:mbed_giga:giga \
   --upload --port /dev/ttyACM0 \
@@ -286,14 +304,14 @@ voice-hub/
 
 ## Dashboard Routes
 
-| Route         | Method | Description                              |
-| ------------- | ------ | ---------------------------------------- |
-| `/api/event`  | POST   | Board sends keyword detection or status  |
-| `/api/status` | POST   | Board heartbeat — keeps Online indicator |
-| `/api/command`| GET    | Board polls for pending commands         |
-| `/api/events` | GET    | SSE stream — pushes events to browser    |
-| `/api/query`  | POST   | Send a prompt to Ollama, get a response  |
-| `/api/speak`  | POST   | Convert text to WAV via Kokoro TTS       |
+| Route          | Method | Description                              |
+| -------------- | ------ | ---------------------------------------- |
+| `/api/event`   | POST   | Board sends keyword detection or status  |
+| `/api/status`  | POST   | Board heartbeat — keeps Online indicator |
+| `/api/command` | GET    | Board polls for pending commands         |
+| `/api/events`  | GET    | SSE stream — pushes events to browser    |
+| `/api/query`   | POST   | Send a prompt to Ollama, get a response  |
+| `/api/speak`   | POST   | Convert text to WAV via Kokoro TTS       |
 
 ---
 

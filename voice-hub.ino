@@ -13,22 +13,21 @@
 //   - <your-project>_inferencing  (exported from Edge Impulse)
 //
 // Setup order:
-//   1. Attach u.FL antenna to the board (replacement arriving tomorrow)
+//   1. Attach u.FL antenna to the board
 //   2. Plug GIGA Display Shield onto the board
 //   3. Wire INMP441 microphone (see I2SMicrophone.h for pinout) — OR use shield mic
 //   4. Fill in WiFi credentials and dashboard URL in config.h
 //   5. Train keyword model on Edge Impulse, export as Arduino library
 //   6. Replace the placeholder include in ClassifierBridge.h
-//   7. Re-enable WiFi.setAntennaExternal() once antenna is attached
-//   8. Upload to Giga R1 M7 core
+//   7. Upload to Giga R1 M7 core
 // ─────────────────────────────────────────────────────────────────────────────
 
-#include "src/config.h"
 #include "src/audio/I2SMicrophone.h"
-#include "src/wifi/WiFiManager.h"
-#include "src/wifi/Dashboard.h"
-#include "src/display/DisplayManager.h"
 #include "src/classifier/ClassifierBridge.h"
+#include "src/config.h"
+#include "src/display/DisplayManager.h"
+#include "src/wifi/Dashboard.h"
+#include "src/wifi/WiFiManager.h"
 
 using namespace VoiceHub;
 
@@ -50,13 +49,14 @@ const char*   lastTriggerLabel = nullptr;
 unsigned long lastHeartbeat = 0;
 
 // ── Forward declarations ───────────────────────────────────────────────────────
-void handleDetection(const ClassifierResult& result);
+void                 handleDetection(const ClassifierResult& result);
 const WebhookTarget* findWebhook(const char* label);
 
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
-    while (!Serial && millis() < 3000);
+    while (!Serial && millis() < 3000)
+        ;
 
     Serial.println("=== Voice Hub — Arduino Giga R1 WiFi ===");
 
@@ -64,15 +64,15 @@ void setup() {
     display.begin();
     display.showStatus("Booting...");
 
-    // TODO: uncomment once the replacement u.FL antenna arrives and is attached
-    // WiFi.setAntennaExternal();
-    // Serial.println("[WiFi] External antenna enabled");
-    Serial.println("[WiFi] Using onboard PCB antenna (replacement antenna pending)");
+    // External u.FL antenna is used automatically once physically attached —
+    // no API call needed on the Giga R1.
+    Serial.println("[WiFi] Antenna ready");
 
     if (!mic.begin()) {
         Serial.println("[FATAL] Microphone init failed. Halting.");
         display.showStatus("MIC FAILED");
-        while (true);
+        while (true)
+            ;
     }
 
     display.showStatus("Connecting to WiFi...");
@@ -123,8 +123,7 @@ void loop() {
 void handleDetection(const ClassifierResult& result) {
     unsigned long now = millis();
 
-    bool sameLabel = (lastTriggerLabel != nullptr &&
-                      strcmp(result.label, lastTriggerLabel) == 0);
+    bool sameLabel = (lastTriggerLabel != nullptr && strcmp(result.label, lastTriggerLabel) == 0);
 
     if (sameLabel && (now - lastTriggerTime) < Config::DEBOUNCE_MS) {
         Serial.println("[DEBOUNCE] Skipping repeated command");
