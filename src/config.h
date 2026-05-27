@@ -17,7 +17,7 @@ constexpr const char* WIFI_PASSWORD = "Luliann465$";
 // Local dev: Windows host IP (board can't reach WSL localhost directly)
 // Production: swap for your Vercel URL e.g. "voice-hub-dashboard.vercel.app"
 constexpr const char* DASHBOARD_HOST = "10.0.0.161";
-constexpr int         DASHBOARD_PORT = 3000;
+constexpr int         DASHBOARD_PORT = 3001;
 
 // How often to send a heartbeat to the dashboard (ms)
 constexpr unsigned long HEARTBEAT_MS = 10000;

@@ -10,9 +10,9 @@ No cloud required. All inference runs locally.
 | Component  | Details                     | Status               |
 | ---------- | --------------------------- | -------------------- |
 | Board      | Arduino Giga R1 WiFi        | ✅ In hand           |
-| Display    | Arduino GIGA Display Shield | 📦 Arriving tomorrow |
-| Microphone | INMP441 MEMS I2S            | 📦 Arriving Thursday |
-| Antenna    | u.FL 2.4/5GHz flexible      | 📦 Arriving tomorrow |
+| Display    | Arduino GIGA Display Shield | ✅ In hand           |
+| Microphone | INMP441 MEMS I2S            | ✅ In hand (shield)  |
+| Antenna    | u.FL 2.4/5GHz flexible      | ✅ In hand           |
 | Speaker    | Bluetooth speaker (A2DP)    | 🔜 Future            |
 
 ### INMP441 Wiring
@@ -238,19 +238,35 @@ usbipd attach --wsl --busid 1-1 --auto-attach
 > Only does anything when the Arduino is plugged in. Keep it running in a
 > minimized terminal while doing Arduino work.
 
-### Every upload: 3-step process
+### Every upload: 4-step process
 
-**Step 1 — Double-press reset** on the Giga R1. LED pulses = DFU mode.
-
-**Step 2 — Attach in PowerShell:**
+**Step 1 — Attach in PowerShell:**
 
 ```powershell
 usbipd attach --wsl --busid 1-1
 ```
 
-**Step 3 — Compile + upload in WSL:**
+**Step 2 — Double-press reset** on the Giga R1. LED pulses = DFU mode.
+
+**Step 3 — Compile + upload in WSL immediately after:**
 
 ```bash
+arduino-cli compile --fqbn arduino:mbed_giga:giga \
+  --upload --port /dev/ttyACM0 \
+  /home/tanner/projects/cpp/arduino/voice-hub
+```
+
+**If you get `LIBUSB_ERROR_OTHER` or `exit status 74`:**
+
+The USB connection dropped after the DFU reset. Re-attach and try again:
+
+```powershell
+# PowerShell
+usbipd attach --wsl --busid 1-1
+```
+
+```bash
+# WSL — immediately after
 arduino-cli compile --fqbn arduino:mbed_giga:giga \
   --upload --port /dev/ttyACM0 \
   /home/tanner/projects/cpp/arduino/voice-hub

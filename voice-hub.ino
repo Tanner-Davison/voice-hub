@@ -37,6 +37,7 @@ WiFiManager      wifi(Config::WIFI_SSID, Config::WIFI_PASSWORD);
 Dashboard        dashboard(Config::DASHBOARD_HOST, Config::DASHBOARD_PORT);
 DisplayManager   display;
 ClassifierBridge classifier;
+bool             micReady = false;
 
 // Audio capture buffer — sized to what Edge Impulse expects (1s @ 16kHz)
 int16_t audioBuffer[CAPTURE_SAMPLES];
@@ -55,43 +56,34 @@ const WebhookTarget* findWebhook(const char* label);
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
-    while (!Serial && millis() < 3000)
+    delay(3000);
+    while (!Serial && millis() < 5000)
         ;
 
     Serial.println("=== Voice Hub — Arduino Giga R1 WiFi ===");
-
-    // Boot display first so the user sees something immediately
-    display.begin();
-    display.showStatus("Booting...");
-
-    // External u.FL antenna is used automatically once physically attached —
-    // no API call needed on the Giga R1.
     Serial.println("[WiFi] Antenna ready");
 
     if (!mic.begin()) {
-        Serial.println("[FATAL] Microphone init failed. Halting.");
-        display.showStatus("MIC FAILED");
-        while (true)
-            ;
+        Serial.println("[WARN] Microphone init failed — running without mic.");
+    } else {
+        micReady = true;
     }
 
-    display.showStatus("Connecting to WiFi...");
-
     if (wifi.connect()) {
-        display.setWiFiStatus(true);
-        display.showStatus("connected");
         Serial.println("[Dashboard] Sending connect status...");
         dashboard.sendEvent("status", "connected");
         dashboard.sendStatus();
         lastHeartbeat = millis();
     } else {
-        display.setWiFiStatus(false);
-        display.showStatus("WiFi failed - retrying on detection");
-        Serial.println("[WARN] WiFi not connected. Will retry on detection.");
+        Serial.println("[WARN] WiFi not connected.");
     }
 
-    Serial.println("[READY] Listening for keywords...");
+    // Init display last so we enter loop() quickly
+    display.begin();
+    display.setWiFiStatus(wifi.isConnected());
     display.showStatus("Listening...");
+
+    Serial.println("[READY] Listening for keywords...");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,6 +98,7 @@ void loop() {
     }
 
     // 3. Capture 1 second of audio into buffer
+    if (!micReady) { delay(10); return; }
     mic.capture(audioBuffer, CAPTURE_SAMPLES);
 
     // 4. Run ML inference
