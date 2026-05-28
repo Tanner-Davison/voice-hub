@@ -13,6 +13,10 @@ namespace VoiceHub::Config {
 constexpr const char* WIFI_SSID     = "DavisonFamily";
 constexpr const char* WIFI_PASSWORD = "Luliann465$";
 
+// ── Bridge (Whisper → Ollama → Kokoro) ──────────────────────────────────────
+constexpr const char* BRIDGE_HOST = "10.0.0.161";
+constexpr int         BRIDGE_PORT = 8881;
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 // Local dev: Windows host IP (board can't reach WSL localhost directly)
 // Production: swap for your Vercel URL e.g. "voice-hub-dashboard.vercel.app"

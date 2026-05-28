@@ -1,0 +1,12 @@
+{
+    "config": {
+        "main-stack-size": {
+            "value": 32768
+        }
+    },
+    "target_overrides": {
+        "*": {
+            "rtos.main-thread-stack-size": 32768
+        }
+    }
+}

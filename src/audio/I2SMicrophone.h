@@ -1,67 +1,124 @@
 #pragma once
 
 #include <Arduino.h>
-#include <Arduino_AdvancedAnalog.h>
+#include <PDM.h>
+#include <voice-hub_inferencing.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
-// I2SMicrophone.h  —  INMP441 input via AdvancedI2S (Giga R1)
+// I2SMicrophone.h  —  PDM mic with sliding window for continuous inference
 //
-// Wiring:
-//   INMP441 SD   → Giga R1 PG_9  (SDI / data in)
-//   INMP441 WS   → Giga R1 PG_10 (word select)
-//   INMP441 SCK  → Giga R1 PG_11 (bit clock)
-//   INMP441 VDD  → 3.3V
-//   INMP441 GND  → GND
-//   INMP441 L/R  → GND  (selects left channel)
-//   MCK not connected — INMP441 doesn't need a master clock
+// Uses EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW (4) to slide the window
+// by SLICE_SIZE samples (500ms) each inference — so the full 2s phrase
+// is much more likely to be captured regardless of when you start speaking.
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace VoiceHub {
 
-constexpr uint32_t SAMPLE_RATE     = 16000;
-constexpr size_t   SAMPLES_PER_BUF = 512;           // DMA chunk size
-constexpr size_t   CAPTURE_SAMPLES = SAMPLE_RATE;   // 1 second of audio
+constexpr uint32_t SAMPLE_RATE     = EI_CLASSIFIER_FREQUENCY;
+constexpr size_t   CAPTURE_SAMPLES = EI_CLASSIFIER_RAW_SAMPLE_COUNT;
+constexpr size_t   SLICE_SIZE      = EI_CLASSIFIER_SLICE_SIZE; // 8000 samples = 500ms
 
-// WS, CK, SDI, SDO, MCK
-// SDO and MCK unused for input-only — NC keeps the pin disconnected
-static AdvancedI2S i2s(PG_10, PG_11, PG_9, NC, NC);
+typedef struct {
+    int16_t  *buffer;
+    uint8_t   buf_ready;
+    uint32_t  buf_count;
+    uint32_t  n_samples;
+} inference_t;
+
+static inference_t   _inference;
+static int16_t       _sampleBuffer[2048];
+static volatile bool _record_ready = false;
+
+// Secondary raw capture -- set buf pointer + max to capture outside classifier
+static int16_t*       _raw_buf      = nullptr;
+static size_t         _raw_max      = 0;
+static volatile size_t _raw_count   = 0;
+
+static void _pdm_callback(void) {
+    int bytesAvailable = PDM.available();
+    int bytesRead = PDM.read((char*)&_sampleBuffer[0], bytesAvailable);
+    int samples = bytesRead >> 1;
+
+    // Feed classifier sliding window
+    if (_inference.buf_ready == 0 && _record_ready == true) {
+        for (int i = 0; i < samples; i++) {
+            _inference.buffer[_inference.buf_count++] = _sampleBuffer[i];
+            if (_inference.buf_count >= _inference.n_samples) {
+                _inference.buf_count = 0;
+                _inference.buf_ready = 1;
+                break;
+            }
+        }
+    }
+
+    // Feed secondary raw buffer (used by AskHub)
+    if (_raw_buf != nullptr && _raw_count < _raw_max) {
+        size_t toStore = min((size_t)samples, _raw_max - _raw_count);
+        memcpy(_raw_buf + _raw_count, _sampleBuffer, toStore * 2);
+        _raw_count += toStore;
+    }
+}
 
 class I2SMicrophone {
 public:
     I2SMicrophone() = default;
 
     bool begin() {
-        // AN_I2S_MODE_IN = input only (microphone)
-        // 16kHz, 512 samples per DMA buffer, 8 buffers queued
-        if (!i2s.begin(AN_I2S_MODE_IN, SAMPLE_RATE, SAMPLES_PER_BUF, 8)) {
-            Serial.println("[MIC] Failed to start I2S");
+        // Allocate a full window buffer
+        _inference.buffer = (int16_t*)malloc(CAPTURE_SAMPLES * sizeof(int16_t));
+        if (_inference.buffer == nullptr) {
+            Serial.println("[MIC] malloc failed");
             return false;
         }
-        Serial.println("[MIC] I2S started OK");
+
+        _inference.buf_count = 0;
+        _inference.n_samples = CAPTURE_SAMPLES;
+        _inference.buf_ready = 0;
+
+        PDM.onReceive(_pdm_callback);
+        PDM.setBufferSize(2048);
+
+        if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY)) {
+            Serial.println("[MIC] PDM begin() failed");
+            free(_inference.buffer);
+            return false;
+        }
+
+        Serial.println("[MIC] PDM started OK");
         return true;
     }
 
-    // Fill output buffer with `length` int16 samples (blocking).
-    // Accumulates DMA chunks until the buffer is full.
-    bool capture(int16_t* output, size_t length) {
-        size_t filled = 0;
+    // Sliding window capture -- NO poll callback, zero blocking inside
+    bool captureSlice(int16_t* output, size_t fullLength) {
+        memmove(_inference.buffer,
+                _inference.buffer + SLICE_SIZE,
+                (CAPTURE_SAMPLES - SLICE_SIZE) * sizeof(int16_t));
 
-        while (filled < length) {
-            if (!i2s.available()) {
-                delay(1);
-                continue;
-            }
+        _inference.buf_count = CAPTURE_SAMPLES - SLICE_SIZE;
+        _inference.n_samples = CAPTURE_SAMPLES;
+        _inference.buf_ready = 0;
+        _record_ready = true;
 
-            SampleBuffer buf = i2s.read();
-
-            for (size_t i = 0; i < buf.size() && filled < length; i++) {
-                // buf samples are uint16 — reinterpret as int16 for Edge Impulse
-                output[filled++] = static_cast<int16_t>(buf[i]);
-            }
-
-            buf.release();
+        // Pure busy-wait -- no I2C, no display, no callbacks
+        // PDM interrupt fills the buffer in background; we just yield CPU
+        while (_inference.buf_ready == 0) {
+            delay(1);
         }
 
+        _record_ready = false;
+        memcpy(output, _inference.buffer, fullLength * sizeof(int16_t));
+        return true;
+    }
+
+    // Full blocking capture (used for first fill)
+    bool capture(int16_t* output, size_t length) {
+        _record_ready = true;
+        while (_inference.buf_ready == 0) {
+            delay(10);
+        }
+        memcpy(output, _inference.buffer, length * sizeof(int16_t));
+        _inference.buf_ready = 0;
+        _record_ready = false;
         return true;
     }
 };

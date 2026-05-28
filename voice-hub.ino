@@ -3,29 +3,17 @@
 //
 // Board:   Arduino Giga R1 WiFi
 // Target:  M7 core (primary)
-//
-// Dependencies (install via Arduino Library Manager):
-//   - ArduinoHttpClient
-//   - ArduinoJson
-//   - Arduino_AdvancedAnalog  (for I2S on Giga R1)
-//   - Arduino_GigaDisplay_GFX
-//   - Arduino_GigaDisplayTouch
-//   - <your-project>_inferencing  (exported from Edge Impulse)
-//
-// Setup order:
-//   1. Attach u.FL antenna to the board
-//   2. Plug GIGA Display Shield onto the board
-//   3. Wire INMP441 microphone (see I2SMicrophone.h for pinout) — OR use shield mic
-//   4. Fill in WiFi credentials and dashboard URL in config.h
-//   5. Train keyword model on Edge Impulse, export as Arduino library
-//   6. Replace the placeholder include in ClassifierBridge.h
-//   7. Upload to Giga R1 M7 core
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Save 10KB RAM for Edge Impulse filterbank
+#define EIDSP_QUANTIZE_FILTERBANK 0
 
 #include "src/audio/I2SMicrophone.h"
 #include "src/classifier/ClassifierBridge.h"
 #include "src/config.h"
 #include "src/display/DisplayManager.h"
+#include "src/ui/AskHub.h"
+#include "src/ui/WiFiSettings.h"
 #include "src/wifi/Dashboard.h"
 #include "src/wifi/WiFiManager.h"
 
@@ -37,39 +25,56 @@ WiFiManager      wifi(Config::WIFI_SSID, Config::WIFI_PASSWORD);
 Dashboard        dashboard(Config::DASHBOARD_HOST, Config::DASHBOARD_PORT);
 DisplayManager   display;
 ClassifierBridge classifier;
+WiFiSettings     wifiSettings;
+AskHub           askHub;
 bool             micReady = false;
 
-// Audio capture buffer — sized to what Edge Impulse expects (1s @ 16kHz)
-int16_t audioBuffer[CAPTURE_SAMPLES];
+// Audio buffer — heap allocated in I2SMicrophone, captured into here
+static int16_t audioBuffer[EI_CLASSIFIER_RAW_SAMPLE_COUNT];
 
-// Debounce tracking
+// Debounce
 unsigned long lastTriggerTime  = 0;
 const char*   lastTriggerLabel = nullptr;
 
-// Heartbeat tracking
+// Heartbeat
 unsigned long lastHeartbeat = 0;
 
 // ── Forward declarations ───────────────────────────────────────────────────────
-void                 handleDetection(const ClassifierResult& result);
+void                 handleDetection(const char* label, float confidence);
 const WebhookTarget* findWebhook(const char* label);
 
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
     delay(3000);
-    while (!Serial && millis() < 5000)
-        ;
+    while (!Serial && millis() < 5000);
 
-    Serial.println("=== Voice Hub — Arduino Giga R1 WiFi ===");
-    Serial.println("[WiFi] Antenna ready");
+    Serial.println("=== Voice Hub --- Arduino Giga R1 WiFi ===");
 
+    // Init mic first so its buffer gets priority on the heap
     if (!mic.begin()) {
-        Serial.println("[WARN] Microphone init failed — running without mic.");
+        Serial.println("[WARN] Microphone init failed.");
     } else {
         micReady = true;
     }
 
-    if (wifi.connect()) {
+    // Grab AskHub buffer after mic -- still before Edge Impulse
+    askHub.preallocate();
+
+    // Try saved credentials first, fall back to compiled-in config
+    static char savedSSID[33] = {0};
+    static char savedPass[64] = {0};
+    wifiSettings.loadSaved(savedSSID, savedPass);
+
+    bool hasSaved = (savedSSID[0] != '\0');
+    Serial.print("[WiFi] Using ");
+    Serial.println(hasSaved ? "saved credentials" : "config credentials");
+
+    bool connected = hasSaved
+        ? wifi.connect(savedSSID, savedPass)
+        : wifi.connect();
+
+    if (connected) {
         Serial.println("[Dashboard] Sending connect status...");
         dashboard.sendEvent("status", "connected");
         dashboard.sendStatus();
@@ -78,9 +83,9 @@ void setup() {
         Serial.println("[WARN] WiFi not connected.");
     }
 
-    // Init display last so we enter loop() quickly
     display.begin();
     display.setWiFiStatus(wifi.isConnected());
+    display.setMicStatus(micReady);
     display.showStatus("Listening...");
 
     Serial.println("[READY] Listening for keywords...");
@@ -88,74 +93,144 @@ void setup() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 void loop() {
-    // 1. Keep display responsive
-    display.update();
-
-    // 2. Heartbeat — keep the dashboard showing us as Online
-    if (wifi.isConnected() && (millis() - lastHeartbeat >= Config::HEARTBEAT_MS)) {
-        dashboard.sendStatus();
-        lastHeartbeat = millis();
+    // AskHub takes full control while recording or sending
+    if (askHub.isActive()) {
+        const char* status = askHub.update();
+        if (status) {
+            // AskHub just finished -- repaint and log the result
+            display.redraw();
+            display.forceWiFiStatus(wifi.isConnected());
+            display.setMicStatus(micReady);
+            display.showStatus(status);
+        }
+        return;
     }
 
-    // 3. Capture 1 second of audio into buffer
+    if (wifiSettings.isActive()) {
+        static char newSSID[33] = {0};
+        static char newPass[64] = {0};
+        wifiSettings.update(newSSID, newPass);  // drives the UI; result handled via needsRedraw
+        return;
+    }
+
+    // WiFiSettings closed (back, Done, or successful connect) -- repaint main screen
+    if (wifiSettings.needsRedraw()) {
+        wifiSettings.clearRedraw();
+        display.redraw();                          // full repaint
+        display.forceWiFiStatus(wifi.isConnected()); // always update header dot
+        display.setMicStatus(micReady);
+        if (wifi.isConnected()) display.showStatus("Connected!");
+        else                    display.showStatus("Offline");
+        return;
+    }
+
+    // Single touch poll — update() owns getTouchPoints(), never call it elsewhere
+    TouchResult touch = display.update();
+
+    switch (touch) {
+        case TouchResult::ASK_TAP:
+            askHub.open(display.getDisplay(), display.getTouch(),
+                        Config::BRIDGE_HOST, Config::BRIDGE_PORT);
+            return;
+        case TouchResult::SETTINGS_TAP:
+            wifiSettings.open(display.getDisplay(), display.getTouch(), &wifi);
+            return;
+        case TouchResult::MUTE_TAP:
+            micReady = false;
+            display.setMicStatus(false);
+            display.showStatus("Muted");
+            break;
+        case TouchResult::UNMUTE_TAP:
+            micReady = true;
+            display.setMicStatus(true);
+            display.showStatus("Unmuted");
+            break;
+        case TouchResult::STATUS_TAP:
+            display.showStatus(wifi.isConnected() ? "Online" : "Offline");
+            break;
+        default:
+            break;
+    }
+
+    if (wifi.isConnected() && millis() - lastHeartbeat >= Config::HEARTBEAT_MS) {
+        if (dashboard.sendStatus()) lastHeartbeat = millis();
+        else lastHeartbeat = millis();  // reset regardless so we don't spam
+    }
+
     if (!micReady) { delay(10); return; }
-    mic.capture(audioBuffer, CAPTURE_SAMPLES);
 
-    // 4. Run ML inference
-    ClassifierResult result = classifier.classify(audioBuffer, CAPTURE_SAMPLES);
+    // Sliding window capture — poll touch during the 500ms audio wait.
+    // Button taps are latched in _pendingResult and flushed next update() call.
+    // Capture one 500ms audio slice -- pure PDM, no touch/display calls inside
+    mic.captureSlice(audioBuffer, EI_CLASSIFIER_RAW_SAMPLE_COUNT);
 
-    // 5. Handle valid detections
-    if (result.valid) {
-        handleDetection(result);
+    // Check touch immediately after capture -- catches taps made during the 500ms window
+    {
+        TouchResult postCapture = display.update();
+        switch (postCapture) {
+            case TouchResult::ASK_TAP:
+                askHub.open(display.getDisplay(), display.getTouch(),
+                            Config::BRIDGE_HOST, Config::BRIDGE_PORT);
+                return;
+            case TouchResult::SETTINGS_TAP:
+                wifiSettings.open(display.getDisplay(), display.getTouch(), &wifi);
+                return;
+            case TouchResult::MUTE_TAP:
+                micReady = false;
+                display.setMicStatus(false);
+                display.showStatus("Muted");
+                break;
+            case TouchResult::UNMUTE_TAP:
+                micReady = true;
+                display.setMicStatus(true);
+                display.showStatus("Unmuted");
+                break;
+            case TouchResult::STATUS_TAP:
+                display.showStatus(wifi.isConnected() ? "Online" : "Offline");
+                break;
+            default:
+                break;
+        }
     }
 
-    delay(10);
+    ClassifierResult result = classifier.classify(audioBuffer, EI_CLASSIFIER_RAW_SAMPLE_COUNT);
+
+    if (result.valid) {
+        handleDetection(result.label, result.confidence);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-void handleDetection(const ClassifierResult& result) {
+void handleDetection(const char* label, float confidence) {
     unsigned long now = millis();
 
-    bool sameLabel = (lastTriggerLabel != nullptr && strcmp(result.label, lastTriggerLabel) == 0);
-
+    bool sameLabel = (lastTriggerLabel != nullptr && strcmp(label, lastTriggerLabel) == 0);
     if (sameLabel && (now - lastTriggerTime) < Config::DEBOUNCE_MS) {
-        Serial.println("[DEBOUNCE] Skipping repeated command");
+        Serial.println("[DEBOUNCE] Skipping");
         return;
     }
 
     lastTriggerTime  = now;
-    lastTriggerLabel = result.label;
+    lastTriggerLabel = label;
 
     Serial.print("[DETECT] ");
-    Serial.print(result.label);
+    Serial.print(label);
     Serial.print(" (");
-    Serial.print(result.confidence * 100.0f, 1);
+    Serial.print(confidence * 100.0f, 1);
     Serial.println("%)");
 
-    // Update display
-    display.showDetection(result.label, result.confidence);
+    display.showDetection(label, confidence);
 
-    // Post to dashboard
-    dashboard.sendEvent("keyword", result.label, result.confidence);
+    // Only hit network if we're connected -- skip dashboard/webhook silently if not
+    if (!wifi.isConnected()) return;
 
-    // Find and fire matching webhook
-    const WebhookTarget* target = findWebhook(result.label);
+    dashboard.sendEvent("keyword", label, confidence);
 
-    if (target == nullptr) {
-        Serial.print("[WARN] No webhook configured for: ");
-        Serial.println(result.label);
-        return;
-    }
+    const WebhookTarget* target = findWebhook(label);
+    if (target == nullptr) return;
 
     bool ok = wifi.trigger(*target);
-
-    if (ok) {
-        Serial.print("[OK] Webhook fired for: ");
-        Serial.println(result.label);
-    } else {
-        Serial.print("[FAIL] Webhook failed for: ");
-        Serial.println(result.label);
-    }
+    Serial.println(ok ? "[OK] Webhook fired" : "[FAIL] Webhook failed");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
