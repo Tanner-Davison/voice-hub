@@ -3,6 +3,9 @@
 #include <Arduino_GigaDisplay_GFX.h>
 #include <Arduino_GigaDisplayTouch.h>
 #include <Arduino_GigaDisplay.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include "../types.h"
 
 namespace VoiceHub {
@@ -241,26 +244,27 @@ private:
     void _drawHeader() {
         _display->fillRect(0, 0, SCREEN_W, HDR_H, CLR_BG);
 
+        _display->setFont(&FreeSansBold12pt7b);
         _display->setTextColor(CLR_WHITE);
-        _display->setTextSize(2);
-        _display->setCursor(PADDING, 18);
+        _display->setCursor(PADDING, 38);
         _display->print("Voice Hub");
+        _display->setFont(nullptr);
 
         // WiFi dot
         uint16_t wifiColor = _wifiConnected ? CLR_GREEN : CLR_DARKGRAY;
-        _display->fillCircle(SCREEN_W - PADDING - 30, HDR_H / 2, 8, wifiColor);
-        _display->setTextSize(1);
+        _display->fillCircle(SCREEN_W - PADDING - 14, HDR_H / 2, 7, wifiColor);
+        _display->setFont(&FreeSans9pt7b);
         _display->setTextColor(_wifiConnected ? CLR_GREEN : CLR_GRAY);
-        _display->setCursor(SCREEN_W - PADDING - 90, HDR_H / 2 - 4);
-        _display->print(_wifiConnected ? "Online " : "Offline");
+        _display->setCursor(SCREEN_W - PADDING - 90, HDR_H / 2 + 5);
+        _display->print(_wifiConnected ? "Online" : "Offline");
 
         // Mic dot
         uint16_t micColor = _micReady ? CLR_GREEN : CLR_DARKGRAY;
-        _display->fillCircle(SCREEN_W - PADDING - 160, HDR_H / 2, 8, micColor);
-        _display->setTextSize(1);
+        _display->fillCircle(SCREEN_W - PADDING - 174, HDR_H / 2, 7, micColor);
         _display->setTextColor(_micReady ? CLR_GREEN : CLR_GRAY);
-        _display->setCursor(SCREEN_W - PADDING - 210, HDR_H / 2 - 4);
+        _display->setCursor(SCREEN_W - PADDING - 250, HDR_H / 2 + 5);
         _display->print(_micReady ? "Mic OK" : "No Mic");
+        _display->setFont(nullptr);
 
         _display->drawFastHLine(0, HDR_H - 1, SCREEN_W, CLR_BORDER);
         _display->drawFastVLine(LEFT_W, HDR_H, SCREEN_H - HDR_H, CLR_BORDER);
@@ -273,29 +277,31 @@ private:
         _display->fillRoundRect(x, y, w, h, 8, CLR_SURFACE);
         _display->drawRoundRect(x, y, w, h, 8, CLR_BORDER);
 
-        _display->setTextSize(1);
+        _display->setFont(&FreeSans9pt7b);
         _display->setTextColor(CLR_GRAY);
-        _display->setCursor(x + PADDING, y + 10);
+        _display->setCursor(x + PADDING, y + 22);
         _display->print("LAST DETECTION");
 
         if (_lastLabel[0] == '\0') {
-            _display->setTextSize(2);
+            _display->setFont(&FreeSansBold12pt7b);
             _display->setTextColor(CLR_DARKGRAY);
-            _display->setCursor(x + PADDING, y + 45);
+            _display->setCursor(x + PADDING, y + 70);
             _display->print("Waiting...");
+            _display->setFont(nullptr);
             return;
         }
 
-        _display->setTextSize(3);
+        _display->setFont(&FreeSansBold12pt7b);
         _display->setTextColor(CLR_WHITE);
-        _display->setCursor(x + PADDING, y + 32);
+        _display->setCursor(x + PADDING, y + 60);
         _display->print(_lastLabel);
 
-        _display->setTextSize(2);
+        _display->setFont(&FreeSansBold9pt7b);
         _display->setTextColor(CLR_GREEN);
-        _display->setCursor(x + PADDING, y + 80);
+        _display->setCursor(x + PADDING, y + 95);
         _display->print((int)(_lastConfidence * 100.0f));
         _display->print("%");
+        _display->setFont(nullptr);
 
         int barX = x + PADDING, barY = y + h - 22;
         int barW = w - PADDING * 2, barH = 10;
@@ -314,27 +320,27 @@ private:
         _display->fillRoundRect(x, y, w, LOG_H, 8, CLR_SURFACE);
         _display->drawRoundRect(x, y, w, LOG_H, 8, CLR_BORDER);
 
-        // Header with scroll indicator
-        _display->setTextSize(1);
+        _display->setFont(&FreeSans9pt7b);
         _display->setTextColor(CLR_GRAY);
-        _display->setCursor(x + PADDING, y + 10);
+        _display->setCursor(x + PADDING, y + 22);
         _display->print("EVENT LOG");
 
         if (_logCount > LOG_ROWS) {
-            _display->setCursor(x + w - 60, y + 10);
+            _display->setCursor(x + w - 70, y + 22);
             _display->setTextColor(CLR_DARKGRAY);
             _display->print(_scrollOffset > 0 ? "^ scroll" : "swipe ^");
         }
+        _display->setFont(nullptr);
 
         if (_logCount == 0) {
+            _display->setFont(&FreeSans9pt7b);
             _display->setTextColor(CLR_DARKGRAY);
-            _display->setCursor(x + PADDING, y + LOG_H / 2 - 4);
+            _display->setCursor(x + PADDING, y + LOG_H / 2 + 5);
             _display->print("No events yet");
+            _display->setFont(nullptr);
             return;
         }
 
-        // Draw LOG_ROWS entries starting from newest minus scroll offset
-        // _logCount-1 is newest, _logCount-1-_scrollOffset is top of visible window
         int topIdx = _logCount - 1 - _scrollOffset;
         for (int row = 0; row < LOG_ROWS; row++) {
             int entryIdx = topIdx - row;
@@ -342,11 +348,10 @@ private:
             _drawLogRow(row, _log[entryIdx % LOG_BUF]);
         }
 
-        // Scrollbar
         if (_logCount > LOG_ROWS) {
             int sbX    = x + w - 6;
-            int sbH    = LOG_H - 28;
-            int sbY    = y + 28;
+            int sbH    = LOG_H - 32;
+            int sbY    = y + 32;
             int maxScroll = _logCount - LOG_ROWS;
             int thumbH = max(20, sbH * LOG_ROWS / _logCount);
             int thumbY = sbY + (sbH - thumbH) * _scrollOffset / maxScroll;
@@ -357,7 +362,7 @@ private:
 
     void _drawLogRow(int row, const LogEntry& entry) {
         int x = PADDING * 2;
-        int y = LOG_Y + 28 + row * LOG_ROW_H;
+        int y = LOG_Y + 32 + row * LOG_ROW_H;
 
         uint16_t rowBg = (row % 2 == 0) ? CLR_SURFACE : CLR_BG;
         _display->fillRect(PADDING + 1, y, LEFT_W - PADDING * 2 - 8, LOG_ROW_H - 2, rowBg);
@@ -365,17 +370,18 @@ private:
         uint16_t badgeColor = entry.isKeyword ? CLR_GREEN : CLR_BLUE;
         _display->fillCircle(x + 6, y + LOG_ROW_H / 2, 4, badgeColor);
 
-        _display->setTextSize(1);
+        _display->setFont(&FreeSans9pt7b);
         _display->setTextColor(CLR_WHITE);
-        _display->setCursor(x + 18, y + LOG_ROW_H / 2 - 4);
+        _display->setCursor(x + 18, y + LOG_ROW_H / 2 + 5);
         _display->print(entry.label);
 
         if (entry.isKeyword && entry.confidence >= 0) {
             _display->setTextColor(CLR_GRAY);
-            _display->setCursor(LEFT_W - PADDING * 3 - 30, y + LOG_ROW_H / 2 - 4);
+            _display->setCursor(LEFT_W - PADDING * 3 - 36, y + LOG_ROW_H / 2 + 5);
             _display->print((int)(entry.confidence * 100));
             _display->print("%");
         }
+        _display->setFont(nullptr);
     }
 
     void _drawButtons() {
@@ -383,7 +389,6 @@ private:
         uint16_t    colors[] = { CLR_BLUE, CLR_GREEN, 0xFD20, 0x4A10, 0xF81F };
         int btnCount = 5;
         int btnW     = RIGHT_W;
-        // 5 buttons -- reduce height to fit
         int totalGap = PADDING * (btnCount - 1);
         int btnH     = (SCREEN_H - BTN_Y - PADDING - totalGap) / btnCount;
 
@@ -391,13 +396,18 @@ private:
             int bx = RIGHT_X + PADDING;
             int by = BTN_Y + i * (btnH + PADDING);
             _display->fillRoundRect(bx, by, btnW - PADDING, btnH, 8, colors[i]);
-            _display->setTextSize(1);
+
+            // Center text using getTextBounds
+            _display->setFont(&FreeSansBold9pt7b);
             _display->setTextColor(CLR_WHITE);
-            int tx = bx + (btnW / 2) - (strlen(labels[i]) * 3);
-            int ty = by + btnH / 2 - 4;
+            int16_t tx1, ty1; uint16_t tw, th;
+            _display->getTextBounds(labels[i], 0, 0, &tx1, &ty1, &tw, &th);
+            int tx = bx + (btnW - PADDING) / 2 - tw / 2;
+            int ty = by + btnH / 2 + th / 2;
             _display->setCursor(tx, ty);
             _display->print(labels[i]);
         }
+        _display->setFont(nullptr);
     }
 
     // Maps a tap in the right-panel button area to a TouchResult.

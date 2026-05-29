@@ -13,6 +13,7 @@
 #include "src/config.h"
 #include "src/display/DisplayManager.h"
 #include "src/ui/AskHub.h"
+#include "src/ui/AskWindows.h"
 #include "src/ui/WiFiSettings.h"
 #include "src/wifi/Dashboard.h"
 #include "src/wifi/WiFiManager.h"
@@ -27,6 +28,7 @@ DisplayManager   display;
 ClassifierBridge classifier;
 WiFiSettings     wifiSettings;
 AskHub           askHub;
+AskWindows       askWin;
 bool             micReady = false;
 
 // Audio buffer — heap allocated in I2SMicrophone, captured into here
@@ -60,6 +62,8 @@ void setup() {
 
     // Grab AskHub buffer after mic -- still before Edge Impulse
     askHub.preallocate();
+    // Share AskHub's buffer -- AskWindows never runs simultaneously
+    askWin.preallocate(_ahRecBuf);
 
     // Try saved credentials first, fall back to compiled-in config
     static char savedSSID[33] = {0};
@@ -94,6 +98,17 @@ void setup() {
 // ─────────────────────────────────────────────────────────────────────────────
 void loop() {
     // AskHub takes full control while recording or sending
+    if (askWin.isActive()) {
+        const char* status = askWin.update();
+        if (status) {
+            display.redraw();
+            display.forceWiFiStatus(wifi.isConnected());
+            display.setMicStatus(micReady);
+            display.showStatus(status);
+        }
+        return;
+    }
+
     if (askHub.isActive()) {
         const char* status = askHub.update();
         if (status) {
@@ -130,6 +145,10 @@ void loop() {
     switch (touch) {
         case TouchResult::ASK_TAP:
             askHub.open(display.getDisplay(), display.getTouch(),
+                        Config::BRIDGE_HOST, Config::BRIDGE_PORT);
+            return;
+        case TouchResult::ASK_WIN_TAP:
+            askWin.open(display.getDisplay(), display.getTouch(),
                         Config::BRIDGE_HOST, Config::BRIDGE_PORT);
             return;
         case TouchResult::SETTINGS_TAP:
@@ -170,6 +189,10 @@ void loop() {
         switch (postCapture) {
             case TouchResult::ASK_TAP:
                 askHub.open(display.getDisplay(), display.getTouch(),
+                            Config::BRIDGE_HOST, Config::BRIDGE_PORT);
+                return;
+            case TouchResult::ASK_WIN_TAP:
+                askWin.open(display.getDisplay(), display.getTouch(),
                             Config::BRIDGE_HOST, Config::BRIDGE_PORT);
                 return;
             case TouchResult::SETTINGS_TAP:

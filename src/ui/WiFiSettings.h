@@ -5,6 +5,9 @@
 #include <math.h>
 #include <Arduino_GigaDisplay_GFX.h>
 #include <Arduino_GigaDisplayTouch.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include <kvstore_global_api.h>
 #include "../wifi/WiFiManager.h"
 
@@ -185,10 +188,11 @@ private:
     // -- Scan -----------------------------------------------------------------
     void _scanNetworks() {
         _disp->fillScreen(WS_BG);
+        _disp->setFont(&FreeSansBold12pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        _disp->setCursor(SW / 2 - 80, SH / 2 - 10);
+        _disp->setCursor(SW / 2 - 110, SH / 2 + 6);
         _disp->print("Scanning WiFi...");
+        _disp->setFont(nullptr);
         int n = WiFi.scanNetworks();
         _scanCount = min(n, 10);
         for (int i = 0; i < _scanCount; i++) {
@@ -208,10 +212,11 @@ private:
         int maxVisible = (RESCAN_Y - HDR - PAD) / rowH;
 
         if (_scanCount == 0) {
+            _disp->setFont(&FreeSans9pt7b);
             _disp->setTextColor(WS_GRAY);
-            _disp->setTextSize(2);
             _disp->setCursor(PAD * 2, HDR + 40);
             _disp->print("No networks found.");
+            _disp->setFont(nullptr);
         } else {
             // Mark currently connected network
             String currentSSID = _wifiManager ? _wifiManager->connectedSSID() : String("");
@@ -226,10 +231,13 @@ private:
 
         _disp->fillRect(0, RESCAN_Y, SW, RESCAN_H, WS_ACCENT);
         _disp->drawFastHLine(0, RESCAN_Y, SW, WS_BORDER);
+        _disp->setFont(&FreeSansBold9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        _disp->setCursor(SW / 2 - 42, RESCAN_Y + RESCAN_H / 2 - 8);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds("Rescan", 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(SW / 2 - tw / 2, RESCAN_Y + RESCAN_H / 2 + th / 2);
         _disp->print("Rescan");
+        _disp->setFont(nullptr);
     }
 
     void _drawNetworkRow(int row, int idx, bool highlighted, bool isCurrentNetwork = false) {
@@ -258,20 +266,22 @@ private:
 
         // "connected" label -- sits left of the bars with a clear gap
         if (isCurrentNetwork) {
-            constexpr int LABEL_GAP = 10;  // gap between label right edge and bars
-            // "connected" at textSize(1) = 9 chars * 6px = 54px wide
-            int labelX = barsLeft - LABEL_GAP - 54;
+            constexpr int LABEL_GAP = 10;
+            _disp->setFont(&FreeSans9pt7b);
+            int16_t tx1, ty1; uint16_t tw, th;
+            _disp->getTextBounds("connected", 0, 0, &tx1, &ty1, &tw, &th);
+            int labelX = barsLeft - LABEL_GAP - tw;
             _disp->setTextColor(WS_GREEN);
-            _disp->setTextSize(1);
-            _disp->setCursor(labelX, y + rowH / 2 - 4);
+            _disp->setCursor(labelX, y + rowH / 2 + 5);
             _disp->print("connected");
+            _disp->setFont(nullptr);
         }
 
-        // SSID -- left side
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        _disp->setCursor(PAD * 2 + 4, y + rowH / 2 - 8);
+        _disp->setCursor(PAD * 2 + 4, y + rowH / 2 + 5);
         _disp->print(_scannedSSIDs[idx]);
+        _disp->setFont(nullptr);
     }
 
     // -- Stats screen ---------------------------------------------------------
@@ -300,20 +310,22 @@ private:
         int pct      = constrain(map(rssi, -90, -30, 0, 100), 0, 100);
         uint16_t sigColor = pct > 66 ? WS_GREEN : pct > 33 ? 0xFFE0 : WS_RED;
 
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_GRAY);
-        _disp->setTextSize(1);
         _disp->setCursor(PAD * 2, barAreaY);
         _disp->print("SIGNAL");
+        _disp->setFont(nullptr);
 
-        _disp->fillRoundRect(PAD * 2, barAreaY + 14, barMaxW, 18, 4, WS_SURFACE);
-        _disp->fillRoundRect(PAD * 2, barAreaY + 14, barMaxW * pct / 100, 18, 4, sigColor);
-        _disp->drawRoundRect(PAD * 2, barAreaY + 14, barMaxW, 18, 4, WS_BORDER);
+        _disp->fillRoundRect(PAD * 2, barAreaY + 16, barMaxW, 18, 4, WS_SURFACE);
+        _disp->fillRoundRect(PAD * 2, barAreaY + 16, barMaxW * pct / 100, 18, 4, sigColor);
+        _disp->drawRoundRect(PAD * 2, barAreaY + 16, barMaxW, 18, 4, WS_BORDER);
 
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(sigColor);
-        _disp->setTextSize(1);
-        _disp->setCursor(PAD * 2 + barMaxW + 8, barAreaY + 18);
+        _disp->setCursor(PAD * 2 + barMaxW + 8, barAreaY + 28);
         _disp->print(rssi);
         _disp->print(" dBm");
+        _disp->setFont(nullptr);
 
         // Stats table
         struct { const char* label; String value; } rows[] = {
@@ -322,23 +334,22 @@ private:
             { "Subnet",      subnet  },
             { "MAC",         mac     },
         };
-        int tableY  = barAreaY + 48;
+        int tableY  = barAreaY + 52;
         int rowH    = 44;
         for (int i = 0; i < 4; i++) {
             int ry = tableY + i * rowH;
             uint16_t rowBg = (i % 2 == 0) ? WS_SURFACE : WS_BG;
             _disp->fillRect(PAD, ry, SW - PAD * 2, rowH - 2, rowBg);
             _disp->drawFastHLine(PAD, ry, SW - PAD * 2, WS_BORDER);
-
+            _disp->setFont(&FreeSans9pt7b);
             _disp->setTextColor(WS_GRAY);
-            _disp->setTextSize(1);
-            _disp->setCursor(PAD * 2, ry + 8);
+            _disp->setCursor(PAD * 2, ry + 14);
             _disp->print(rows[i].label);
-
+            _disp->setFont(&FreeSansBold9pt7b);
             _disp->setTextColor(WS_WHITE);
-            _disp->setTextSize(2);
-            _disp->setCursor(PAD * 2, ry + 22);
+            _disp->setCursor(PAD * 2, ry + 36);
             _disp->print(rows[i].value);
+            _disp->setFont(nullptr);
         }
 
         // Done button at bottom
@@ -350,25 +361,26 @@ private:
         _disp->fillScreen(WS_BG);
         _drawHeader("Connection Failed", true);
 
-        // Big X icon area
         int cx = SW / 2, cy = HDR + 90;
         _disp->fillCircle(cx, cy, 50, WS_RED);
+        _disp->setFont(&FreeSansBold12pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(4);
-        _disp->setCursor(cx - 12, cy - 14);
+        _disp->setCursor(cx - 10, cy + 8);
         _disp->print("X");
 
+        _disp->setFont(&FreeSansBold9pt7b);
         _disp->setTextColor(WS_GRAY);
-        _disp->setTextSize(2);
-        _disp->setCursor(SW / 2 - (int)(strlen(_ssidBuf) * 6), cy + 68);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(_ssidBuf, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(SW / 2 - tw / 2, cy + 74);
         _disp->print(_ssidBuf);
 
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_DARKGRAY);
-        _disp->setTextSize(1);
         _disp->setCursor(PAD * 2, cy + 100);
         _disp->print("Could not connect. Check password and try again.");
+        _disp->setFont(nullptr);
 
-        // Two buttons: Try Again | Back to List
         int btnY = SH - 66;
         int btnW = SW / 2 - PAD * 2;
         _drawButton(PAD,              btnY, btnW, 56, "Try Again", WS_ACCENT);
@@ -389,6 +401,7 @@ private:
     void _handleNetworkTouch(int tx, int ty) {
         // Back
         if (tx < 120 && ty < HDR) {
+            _disp->setFont(nullptr);  // reset font before returning to main screen
             _active      = false;
             _needsRedraw = true;
             return;
@@ -528,10 +541,10 @@ private:
     }
 
     void _handleStatsTouch(int tx, int ty) {
-        // Back (header) or Done button (bottom) -- both close
         bool backTapped = (tx < 120 && ty < HDR);
         bool doneTapped = (ty >= SH - 56);
         if (backTapped || doneTapped) {
+            _disp->setFont(nullptr);  // reset font before returning to main screen
             _active      = false;
             _needsRedraw = true;
         }
@@ -588,25 +601,24 @@ private:
         uint16_t toggleBg = _showPass ? WS_BLUE : WS_DARKGRAY;
         _disp->fillRoundRect(TOGGLE_X, TOGGLE_Y, TOGGLE_W, TOGGLE_H, 4, toggleBg);
         _disp->drawRoundRect(TOGGLE_X, TOGGLE_Y, TOGGLE_W, TOGGLE_H, 4, WS_BORDER);
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(1);
         const char* lbl = _showPass ? "HIDE" : "SHOW";
-        _disp->setCursor(TOGGLE_X + TOGGLE_W / 2 - 12, TOGGLE_Y + TOGGLE_H / 2 - 4);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(lbl, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(TOGGLE_X + TOGGLE_W / 2 - tw / 2, TOGGLE_Y + TOGGLE_H / 2 + th / 2);
         _disp->print(lbl);
+        _disp->setFont(nullptr);
 
-        // Password text -- max chars that fit before the toggle button
-        // textSize(2): each char is 12px wide. Available width = TOGGLE_X - PAD*2 - 4 - cursor_width
         constexpr int TEXT_START_X = PAD * 2;
-        constexpr int TEXT_MAX_X   = TOGGLE_X - 8;  // 8px gap before button
-        constexpr int CHAR_W       = 12;             // textSize(2) = 6px * 2
+        constexpr int TEXT_MAX_X   = TOGGLE_X - 8;
+        constexpr int CHAR_W       = 9;  // FreeSans9pt approx width
         int maxChars = (TEXT_MAX_X - TEXT_START_X) / CHAR_W;
+        int startIdx = max(0, _passLen - maxChars + 1);
 
-        // Show the tail of the password so the most recent chars are always visible
-        int startIdx = max(0, _passLen - maxChars + 1); // +1 to leave room for cursor
-
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        _disp->setCursor(TEXT_START_X, FIELD_Y + 14);
+        _disp->setCursor(TEXT_START_X, FIELD_Y + 30);
         if (_showPass) {
             for (int i = startIdx; i < _passLen; i++)
                 _disp->print((char)_passBuf[i]);
@@ -615,6 +627,7 @@ private:
                 _disp->print('*');
         }
         _disp->print('_');
+        _disp->setFont(nullptr);
     }
 
     void _drawKeyboardRegion() {
@@ -660,64 +673,70 @@ private:
     void _drawKeyColored(int x, int y, int w, int h, const String& label, uint16_t bg) {
         _disp->fillRoundRect(x, y, w, h, 6, bg);
         _disp->drawRoundRect(x, y, w, h, 6, WS_BORDER);
+        _disp->setFont(&FreeSansBold9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        int tx = x + w / 2 - (int)(label.length() * 6);
-        int ty = y + h / 2 - 8;
-        _disp->setCursor(tx, ty);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(label.c_str(), 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(x + w / 2 - tw / 2, y + h / 2 + th / 2);
         _disp->print(label);
+        _disp->setFont(nullptr);
     }
 
     // -- Shared drawing -------------------------------------------------------
     void _drawHeader(const char* title, bool showBack) {
         _disp->fillRect(0, 0, SW, HDR, 0x0841);
         _disp->drawFastHLine(0, HDR - 1, SW, WS_BORDER);
+        _disp->setFont(&FreeSansBold12pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        _disp->setCursor(showBack ? 70 : PAD, HDR / 2 - 8);
+        _disp->setCursor(showBack ? 86 : PAD, HDR / 2 + 8);
         _disp->print(title);
+        _disp->setFont(nullptr);
         if (showBack) {
-            _disp->fillRoundRect(PAD, HDR / 2 - 12, 54, 24, 4, WS_SURFACE);
-            _disp->drawRoundRect(PAD, HDR / 2 - 12, 54, 24, 4, WS_BORDER);
-            _disp->setCursor(PAD + 8, HDR / 2 - 4);
+            _disp->fillRoundRect(PAD, HDR / 2 - 14, 70, 28, 4, WS_SURFACE);
+            _disp->drawRoundRect(PAD, HDR / 2 - 14, 70, 28, 4, WS_BORDER);
+            _disp->setFont(&FreeSans9pt7b);
             _disp->setTextColor(WS_WHITE);
-            _disp->setTextSize(1);
+            _disp->setCursor(PAD + 6, HDR / 2 + 5);
             _disp->print("< Back");
+            _disp->setFont(nullptr);
         }
     }
 
     void _drawButton(int x, int y, int w, int h, const char* label, uint16_t color) {
         _disp->fillRoundRect(x, y, w, h, 8, color);
+        _disp->setFont(&FreeSansBold9pt7b);
         _disp->setTextColor(WS_WHITE);
-        _disp->setTextSize(2);
-        int tx = x + w / 2 - (int)(strlen(label) * 6);
-        int ty = y + h / 2 - 8;
-        _disp->setCursor(tx, ty);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(label, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(x + w / 2 - tw / 2, y + h / 2 + th / 2);
         _disp->print(label);
+        _disp->setFont(nullptr);
     }
 
     void _drawConnectingScreen(int attempt, int tick) {
-        // Only do a full clear on the very first call
         if (attempt == 1 && tick == 0) {
             _disp->fillScreen(WS_BG);
             _drawHeader("Connecting...", false);
-
-            // SSID label
+            _disp->setFont(&FreeSans9pt7b);
             _disp->setTextColor(WS_GRAY);
-            _disp->setTextSize(1);
-            _disp->setCursor(SW / 2 - (int)(strlen(_ssidBuf) * 3), HDR + 40);
+            int16_t tx1, ty1; uint16_t tw, th;
+            _disp->getTextBounds(_ssidBuf, 0, 0, &tx1, &ty1, &tw, &th);
+            _disp->setCursor(SW / 2 - tw / 2, HDR + 42);
             _disp->print(_ssidBuf);
+            _disp->setFont(nullptr);
         }
 
-        // Attempt counter -- clear just that region
-        int attY = HDR + 60;
+        int attY = HDR + 56;
         _disp->fillRect(0, attY, SW, 20, WS_BG);
+        _disp->setFont(&FreeSans9pt7b);
         _disp->setTextColor(WS_GRAY);
-        _disp->setTextSize(1);
         char attBuf[32];
         snprintf(attBuf, sizeof(attBuf), "Attempt %d of 3", attempt);
-        _disp->setCursor(SW / 2 - (int)(strlen(attBuf) * 3), attY + 4);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(attBuf, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(SW / 2 - tw / 2, attY + 14);
         _disp->print(attBuf);
+        _disp->setFont(nullptr);
 
         // Spinner ring of 12 dots
         int cx = SW / 2, cy = SH / 2 - 10;

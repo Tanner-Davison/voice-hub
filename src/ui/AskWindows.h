@@ -4,6 +4,10 @@
 #include <WiFiClient.h>
 #include <Arduino_GigaDisplay_GFX.h>
 #include <Arduino_GigaDisplayTouch.h>
+#include <Fonts/FreeSansBold18pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include <PDM.h>
 #include <mbed.h>
 #include <math.h>
@@ -32,7 +36,7 @@ static constexpr size_t AW_MAX_SAMPLES = AW_SAMPLE_RATE * AW_MAX_SECONDS;
 #define AW_SURFACE  0x2104
 #define AW_RED      0xF800
 
-enum class AwState { IDLE, READY, RECORDING, SENDING, WAITING, DONE, ERROR_STATE };
+enum class AwState { IDLE, READY, RECORDING, SENDING, WAITING, DONE, DONE_DISPLAY, ERROR_STATE };
 
 static volatile AwState  _awState      = AwState::IDLE;
 static volatile bool     _awThreadDone = false;
@@ -181,10 +185,17 @@ public:
             case AwState::DONE:
                 if (_awThreadDone) {
                     _awThreadDone = false;
-                    _drawResponseScreen(_awTranscript, _awReply);
-                    delay(4000);  // show text for 4s then return
+                    _drawResponseScreen(_awTranscript, _awReply, true);
+                    _drainTouch(200);
+                    _awState = AwState::DONE_DISPLAY;
+                }
+                break;
+
+            case AwState::DONE_DISPLAY:
+                if (_waitForTap()) {
+                    const char* r = _awReply[0] ? _awReply : "Windows played response";
                     _close();
-                    return _awReply[0] ? _awReply : "Windows played response";
+                    return r;
                 }
                 break;
 
@@ -321,65 +332,84 @@ private:
         _disp->fillScreen(AW_BG);
         _disp->fillRect(0, 0, AW_SW, 56, AW_SURFACE);
         _disp->drawFastHLine(0, 55, AW_SW, AW_GRAY);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _disp->setCursor(AW_PAD, 18); _disp->print("Ask Windows");
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_PAD, 38); _disp->print("Audio plays on Windows speaker  |  tap outside START to cancel");
+        _disp->setFont(&FreeSansBold12pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_PAD, 38); _disp->print("Ask Windows");
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_PAD, 52); _disp->print("Audio plays on Windows speaker  |  tap outside START to cancel");
+        _disp->setFont(nullptr);
 
-        // Mic icon
-        int cx = AW_SW / 2, cy = 130;
+        int cx = AW_SW / 2, cy = 140;
         _disp->fillCircle(cx, cy, 44, AW_SURFACE);
         _disp->drawCircle(cx, cy, 44, AW_ORANGE);
         _disp->fillRoundRect(cx - 10, cy - 26, 20, 32, 8, AW_ORANGE);
         _disp->fillRect(cx - 16, cy + 10, 32, 5, AW_ORANGE);
         _disp->fillRect(cx - 2, cy + 15, 4, 8, AW_ORANGE);
 
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(2);
-        _disp->setCursor(AW_SW / 2 - 126, 188);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_SW / 2 - 100, 210);
         _disp->print("Press START to record");
+        _disp->setFont(nullptr);
 
         int bx = AW_SW / 2 - 150, by = AW_SH - 130;
         _disp->fillRoundRect(bx, by, 300, 90, 14, AW_ORANGE);
-        _disp->setTextColor(0x0000); _disp->setTextSize(3);
-        _disp->setCursor(bx + 60, by + 30); _disp->print("START");
+        _disp->setFont(&FreeSansBold18pt7b);
+        _disp->setTextColor(0x0000);
+        _disp->setCursor(bx + 55, by + 62); _disp->print("START");
+        _disp->setFont(nullptr);
     }
 
     void _drawRecordingScreen() {
         _disp->fillScreen(AW_BG);
         _disp->fillRect(0, 0, AW_SW, 56, AW_SURFACE);
         _disp->drawFastHLine(0, 55, AW_SW, AW_GRAY);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _disp->setCursor(AW_PAD, 18); _disp->print("Ask Windows");
-        _disp->fillRoundRect(AW_SW - 90, 10, 78, 36, 6, AW_RED);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _disp->setCursor(AW_SW - 78, 20); _disp->print("REC");
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _disp->setCursor(AW_PAD, 76); _disp->print("Speak now -- tap STOP when done");
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_PAD, 112); _disp->print("MIC LEVEL");
+        _disp->setFont(&FreeSansBold12pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_PAD, 38); _disp->print("Ask Windows");
+        _disp->fillRoundRect(AW_SW - 90, 12, 78, 34, 6, AW_RED);
+        _disp->setFont(&FreeSansBold9pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_SW - 76, 34); _disp->print("REC");
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_PAD, 80); _disp->print("Speak now -- tap STOP when done");
+        _disp->setFont(nullptr);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_PAD, 115); _disp->print("MIC LEVEL");
+        _disp->setFont(nullptr);
         _disp->fillRoundRect(AW_PAD, 120, AW_SW - AW_PAD * 2, 60, 8, 0x1082);
         _disp->drawRoundRect(AW_PAD, 120, AW_SW - AW_PAD * 2, 60, 8, AW_GRAY);
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_PAD, 196); _disp->print("TIME REMAINING");
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_PAD, 200); _disp->print("TIME REMAINING");
+        _disp->setFont(nullptr);
         _disp->fillRoundRect(AW_PAD, 208, AW_SW - AW_PAD * 2, 20, 4, 0x1082);
         _disp->drawRoundRect(AW_PAD, 208, AW_SW - AW_PAD * 2, 20, 4, AW_GRAY);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(5);
-        _disp->setCursor(AW_SW / 2 - 15, 248); _disp->print(AW_MAX_SECONDS);
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_SW / 2 - 18, 298); _disp->print("seconds");
+        _disp->setFont(&FreeSansBold18pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_SW / 2 - 14, 278); _disp->print(AW_MAX_SECONDS);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_SW / 2 - 18, 300); _disp->print("sec");
+        _disp->setFont(nullptr);
         int bx = AW_SW / 2 - 150, by = AW_SH - 100;
         _disp->fillRoundRect(bx, by, 300, 80, 12, AW_RED);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(3);
-        _disp->setCursor(bx + 300/2 - 36, by + 26); _disp->print("STOP");
+        _disp->setFont(&FreeSansBold18pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(bx + 300/2 - 44, by + 54); _disp->print("STOP");
+        _disp->setFont(nullptr);
         _lastMeterUpdate = millis();
     }
 
     void _drawMeter() {
         int bx = AW_PAD + 3, by = 123, bw = AW_SW - AW_PAD * 2 - 6, bh = 54;
         _disp->fillRoundRect(bx, by, bw, bh, 6, 0x1082);
-        float level = constrain(_levelSmooth * 12.0f, 0.0f, 1.0f);
+        float level = constrain(_levelSmooth * 4.0f, 0.0f, 1.0f);
         int   fillW = (int)(bw * level);
-        uint16_t col = level > 0.75f ? AW_RED : level > 0.4f ? AW_ORANGE : AW_GREEN;
+        uint16_t col = level > 0.85f ? AW_RED : level > 0.5f ? AW_ORANGE : AW_GREEN;
         if (fillW > 4) _disp->fillRoundRect(bx, by, fillW, bh, 6, col);
         for (int t = 1; t < 10; t++)
             _disp->drawFastVLine(bx + bw * t / 10, by + bh - 10, 10, 0x39C7);
@@ -387,13 +417,16 @@ private:
 
     void _drawCountdown(unsigned long elapsedMs, unsigned long maxMs) {
         float remaining = max(0.0f, (float)AW_MAX_SECONDS - elapsedMs / 1000.0f);
-        _disp->fillRect(AW_SW / 2 - 60, 240, 120, 60, AW_BG);
-        _disp->setTextColor(remaining < 2.0f ? AW_RED : AW_WHITE); _disp->setTextSize(5);
+        _disp->fillRect(AW_SW / 2 - 40, 248, 80, 56, AW_BG);
+        _disp->setFont(&FreeSansBold18pt7b);
+        _disp->setTextColor(remaining < 2.0f ? AW_RED : AW_WHITE);
         char buf[8]; snprintf(buf, sizeof(buf), "%d", (int)ceilf(remaining));
-        _disp->setCursor(AW_SW / 2 - (int)(strlen(buf) * 15), 248); _disp->print(buf);
-        _disp->fillRect(AW_SW / 2 - 30, 298, 60, 10, AW_BG);
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_SW / 2 - 18, 298); _disp->print("seconds");
+        _disp->setCursor(AW_SW / 2 - 14, 278); _disp->print(buf);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->fillRect(AW_SW / 2 - 20, 285, 40, 16, AW_BG);
+        _disp->setCursor(AW_SW / 2 - 18, 300); _disp->print("sec");
+        _disp->setFont(nullptr);
         int barX = AW_PAD + 2, barW = AW_SW - AW_PAD * 2 - 4;
         float pct = constrain((float)elapsedMs / (float)maxMs, 0.0f, 1.0f);
         int fillW = (int)(barW * pct);
@@ -411,8 +444,10 @@ private:
             _disp->fillScreen(AW_BG);
             _disp->fillRect(0, 0, AW_SW, 56, AW_SURFACE);
             _disp->drawFastHLine(0, 55, AW_SW, AW_GRAY);
-            _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-            _disp->setCursor(AW_PAD, 18); _disp->print("Ask Windows");
+            _disp->setFont(&FreeSansBold12pt7b);
+            _disp->setTextColor(AW_WHITE);
+            _disp->setCursor(AW_PAD, 38); _disp->print("Ask Windows");
+            _disp->setFont(nullptr);
         }
         int cx = AW_SW / 2, cy = AW_SH / 2 - 20;
         for (int d = 0; d < 10; d++) {
@@ -425,58 +460,96 @@ private:
             _disp->fillCircle(dx, dy, 5, col);
         }
         _spinIdx = (_spinIdx + 1) % 10;
-        _disp->fillRect(0, cy + 54, AW_SW, 20, AW_BG);
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(2);
-        _disp->setCursor(AW_SW / 2 - (int)(strlen(msg) * 6), cy + 56);
+        _disp->fillRect(0, cy + 54, AW_SW, 24, AW_BG);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(msg, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(AW_SW / 2 - tw / 2, cy + 72);
         _disp->print(msg);
+        _disp->setFont(nullptr);
     }
 
     void _drawError(const char* msg) {
         _disp->fillScreen(AW_BG);
-        _disp->setTextColor(AW_RED); _disp->setTextSize(2);
-        _disp->setCursor(AW_SW / 2 - (int)(strlen(msg) * 6), AW_SH / 2 - 8);
+        _disp->setFont(&FreeSansBold12pt7b);
+        _disp->setTextColor(AW_RED);
+        int16_t tx1, ty1; uint16_t tw, th;
+        _disp->getTextBounds(msg, 0, 0, &tx1, &ty1, &tw, &th);
+        _disp->setCursor(AW_SW / 2 - tw / 2, AW_SH / 2 + th / 2);
         _disp->print(msg);
+        _disp->setFont(nullptr);
     }
 
-    void _drawResponseScreen(const char* transcript, const char* reply) {
+    bool _waitForTap() {
+        if (!_touch) return true;
+        unsigned long now = millis();
+        if (now - _lastTouchTime < 300) return false;
+        uint8_t c; GDTpoint_t p[5];
+        if (_touch->getTouchPoints(p) == 0) return false;
+        _lastTouchTime = now;
+        return true;
+    }
+
+    void _drawResponseScreen(const char* transcript, const char* reply, bool showDismiss = true) {
         _disp->fillScreen(AW_BG);
         _disp->fillRect(0, 0, AW_SW, 56, AW_SURFACE);
         _disp->drawFastHLine(0, 55, AW_SW, AW_GRAY);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _disp->setCursor(AW_PAD, 18); _disp->print("Ask Windows");
-        _disp->fillRoundRect(AW_SW - 130, 10, 118, 36, 6, AW_ORANGE);
-        _disp->setTextColor(0x0000); _disp->setTextSize(1);
-        _disp->setCursor(AW_SW - 122, 24); _disp->print("PLAYING ON PC");
+        _disp->setFont(&FreeSansBold12pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _disp->setCursor(AW_PAD, 38); _disp->print("Ask Windows");
+        if (showDismiss) {
+            _disp->fillRoundRect(AW_SW - 168, 10, 156, 36, 6, AW_DARKGRAY);
+            _disp->setFont(&FreeSans9pt7b);
+            _disp->setTextColor(AW_GRAY);
+            _disp->setCursor(AW_SW - 158, 32); _disp->print("TAP TO DISMISS");
+        } else {
+            _disp->fillRoundRect(AW_SW - 138, 10, 126, 36, 6, AW_ORANGE);
+            _disp->setFont(&FreeSans9pt7b);
+            _disp->setTextColor(0x0000);
+            _disp->setCursor(AW_SW - 128, 32); _disp->print("PLAYING ON PC");
+        }
+        _disp->setFont(nullptr);
 
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_PAD, 72); _disp->print("YOU ASKED:");
-        _disp->fillRoundRect(AW_PAD, 84, AW_SW - AW_PAD * 2, 80, 6, AW_SURFACE);
-        _disp->drawRoundRect(AW_PAD, 84, AW_SW - AW_PAD * 2, 80, 6, AW_GRAY);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _drawWrapped(transcript, AW_PAD + 8, 96, AW_SW - AW_PAD * 2 - 16, 2);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_PAD, 80); _disp->print("YOU ASKED:");
+        _disp->setFont(nullptr);
+        _disp->fillRoundRect(AW_PAD, 86, AW_SW - AW_PAD * 2, 80, 6, AW_SURFACE);
+        _disp->drawRoundRect(AW_PAD, 86, AW_SW - AW_PAD * 2, 80, 6, AW_GRAY);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _drawWrapped(transcript, AW_PAD + 8, 104, AW_SW - AW_PAD * 2 - 16);
 
-        _disp->setTextColor(AW_GRAY); _disp->setTextSize(1);
-        _disp->setCursor(AW_PAD, 178); _disp->print("WINDOWS SAYS:");
-        _disp->fillRoundRect(AW_PAD, 190, AW_SW - AW_PAD * 2, 200, 6, 0x2900);
-        _disp->drawRoundRect(AW_PAD, 190, AW_SW - AW_PAD * 2, 200, 6, AW_ORANGE);
-        _disp->setTextColor(AW_WHITE); _disp->setTextSize(2);
-        _drawWrapped(reply, AW_PAD + 8, 202, AW_SW - AW_PAD * 2 - 16, 2);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_GRAY);
+        _disp->setCursor(AW_PAD, 182); _disp->print("WINDOWS SAYS:");
+        _disp->setFont(nullptr);
+        _disp->fillRoundRect(AW_PAD, 188, AW_SW - AW_PAD * 2, 210, 6, 0x2900);
+        _disp->drawRoundRect(AW_PAD, 188, AW_SW - AW_PAD * 2, 210, 6, AW_ORANGE);
+        _disp->setFont(&FreeSans9pt7b);
+        _disp->setTextColor(AW_WHITE);
+        _drawWrapped(reply, AW_PAD + 8, 206, AW_SW - AW_PAD * 2 - 16);
+        _disp->setFont(nullptr);
     }
 
-    void _drawWrapped(const char* text, int x, int y, int maxW, int textSize) {
+    void _drawWrapped(const char* text, int x, int y, int maxW) {
         if (!text || !text[0]) return;
-        _disp->setTextSize(textSize);
-        int charW = textSize * 6, lineH = textSize * 8 + 4;
+        const int charW = 10;
+        const int lineH = 20;
         int cx = x, cy = y;
         char word[32]; int wi = 0;
         const char* p = text;
         auto flushWord = [&]() {
             if (wi == 0) return;
             word[wi] = '\0';
-            int wordPx = wi * charW;
-            if (cx + wordPx > x + maxW) { cx = x; cy += lineH; }
-            _disp->setCursor(cx, cy); _disp->print(word);
-            cx += wordPx + charW; wi = 0;
+            int16_t tx1, ty1; uint16_t tw, th;
+            _disp->getTextBounds(word, 0, 0, &tx1, &ty1, &tw, &th);
+            if (cx + (int)tw > x + maxW) { cx = x; cy += lineH; }
+            _disp->setCursor(cx, cy);
+            _disp->print(word);
+            cx += tw + charW / 2;
+            wi = 0;
         };
         while (*p) {
             if (*p == ' ' || *p == '\n') flushWord();
